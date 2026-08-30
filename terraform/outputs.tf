@@ -43,6 +43,26 @@ output "codedeploy_bucket" {
   value       = aws_s3_bucket.codedeploy.bucket
 }
 
+output "frontend_bucket" {
+  description = "S3 bucket that hosts the React static site"
+  value       = aws_s3_bucket.frontend.bucket
+}
+
+output "frontend_url" {
+  description = "Public S3 website URL for the React app (HTTP)"
+  value       = local.frontend_website_url
+}
+
+output "frontend_cloudfront_url" {
+  description = "HTTPS CloudFront URL for the React app (*.cloudfront.net)"
+  value       = local.frontend_cloudfront_url
+}
+
+output "frontend_cloudfront_distribution_id" {
+  description = "CloudFront distribution id (used to invalidate cache after deploy)"
+  value       = aws_cloudfront_distribution.frontend.id
+}
+
 output "rds_endpoint" {
   description = "RDS Postgres hostname"
   value       = aws_db_instance.this.address

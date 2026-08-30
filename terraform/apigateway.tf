@@ -3,7 +3,7 @@ resource "aws_apigatewayv2_api" "this" {
   protocol_type = "HTTP"
 
   cors_configuration {
-    allow_origins     = [var.frontend_origin]
+    allow_origins     = local.frontend_cors_origins
     allow_methods     = ["GET", "POST", "OPTIONS"]
     allow_headers     = ["Authorization", "Content-Type"]
     allow_credentials = true

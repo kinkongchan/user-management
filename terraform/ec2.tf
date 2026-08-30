@@ -25,7 +25,7 @@ resource "aws_instance" "fastapi" {
     db_secret_arn        = aws_secretsmanager_secret.db.arn
     cognito_user_pool_id = aws_cognito_user_pool.this.id
     cognito_client_id    = aws_cognito_user_pool_client.web.id
-    cors_origins         = var.frontend_origin
+    cors_origins         = join(",", local.frontend_cors_origins)
   })
 
   user_data_replace_on_change = true

@@ -1,17 +1,17 @@
 # User Management
 
-Cognito authentication, a FastAPI API, and a React client. Provision AWS with Terraform, then deploy FastAPI with CodeDeploy.
-
-The React app stays on your computer. You do not deploy the frontend to AWS.
+Cognito authentication, a FastAPI API, and a React client. Provision AWS with Terraform, deploy FastAPI with CodeDeploy, and host the React app on S3 behind CloudFront (HTTPS `*.cloudfront.net`, no custom domain or ACM cert).
 
 ```mermaid
 flowchart LR
   subgraph laptop [Your laptop]
-    React[React UI]
-    Deploy["backend/deploy.sh"]
+    DeployBackend["backend/deploy.sh"]
+    DeployFrontend["frontend/deploy.sh"]
   end
 
   subgraph aws [AWS]
+    CF[CloudFront]
+    S3Web[S3 frontend]
     Cognito[Cognito user pool]
     APIGW[API Gateway]
     CodeDeploy[CodeDeploy]
@@ -23,12 +23,15 @@ flowchart LR
     end
   end
 
-  React -->|"signup / login"| Cognito
-  React -->|Bearer ID token| APIGW
+  Browser[Browser] -->|HTTPS cloudfront.net| CF
+  CF --> S3Web
+  Browser -->|"signup / login"| Cognito
+  Browser -->|Bearer ID token| APIGW
   APIGW -->|"JWT authorizer, X-Cognito-Sub"| ALB
   ALB --> EC2
   EC2 --> RDS
-  Deploy -->|upload revision| S3
+  DeployFrontend -->|upload static files| S3Web
+  DeployBackend -->|upload revision| S3
   S3 --> CodeDeploy
   CodeDeploy -->|install and start uvicorn| EC2
 ```
@@ -74,11 +77,11 @@ sequenceDiagram
 
 - AWS CLI (`aws configure` — you do this yourself)
 - Terraform >= 1.5
-- Node.js 20+ (to run the React UI on your laptop)
+- Node.js 20+ (to build or run the React UI)
 
 ## 1. Provision infrastructure
 
-`terraform apply` creates Cognito, API Gateway, the ALB, one EC2 instance, RDS, a CodeDeploy application, and a revision bucket. It does **not** start FastAPI.
+`terraform apply` creates Cognito, API Gateway, the ALB, one EC2 instance, RDS, a CodeDeploy application, a revision bucket, a public S3 website bucket, and a CloudFront distribution for the React app. It does **not** start FastAPI or upload frontend files. CloudFront uses the default `*.cloudfront.net` certificate (no ACM). The first CloudFront deploy can take several minutes.
 
 From `user-management/`:
 
@@ -97,6 +100,10 @@ terraform output
 | `cognito_app_client_id` | Frontend `VITE_COGNITO_CLIENT_ID` |
 | `codedeploy_app` | Used by `backend/deploy.sh` |
 | `codedeploy_bucket` | CodeDeploy revision store |
+| `frontend_bucket` | Used by `frontend/deploy.sh` |
+| `frontend_url` | Public S3 website URL (HTTP) |
+| `frontend_cloudfront_url` | HTTPS CloudFront URL (open this in a browser) |
+| `frontend_cloudfront_distribution_id` | Used by `frontend/deploy.sh` to invalidate cache |
 | `aws_region` | Same region you applied in |
 
 Wait a few minutes after apply so the instance installs the CodeDeploy agent.
@@ -113,9 +120,9 @@ That zips `backend/` (including `appspec.yml`), uploads a revision, and starts a
 
 Re-run the same script after API code changes. Do not run `terraform apply` just to ship app code.
 
-The S3 bucket is only the CodeDeploy revision store. You do not SSH or copy files onto the VM yourself.
+The CodeDeploy S3 bucket is only the revision store. You do not SSH or copy files onto the VM yourself.
 
-## 3. Run the UI on your laptop (not on AWS)
+## 3. Run the UI on your laptop (optional)
 
 ```bash
 cd frontend
@@ -143,6 +150,28 @@ Open http://localhost:5173 and:
 4. Hello should show `hello <cognito user id>` and write a login row in RDS
 5. Logins should list every stored `user_id` + `login_time`
 
+## 4. Deploy the UI to S3
+
+From `user-management/`:
+
+```bash
+./frontend/deploy.sh
+```
+
+The script reads Terraform outputs, builds the React app with those `VITE_*` values, syncs `frontend/dist/` to the public website bucket, and invalidates the CloudFront cache. Vite inlines the env vars at build time, so you must rebuild after API Gateway or Cognito values change.
+
+Open the printed `frontend_cloudfront_url` (HTTPS, for example `https://d111111abcdef8.cloudfront.net`) and run the same checks as local:
+
+1. Sign up with email + password
+2. Confirm the code Cognito emails you
+3. Log in
+4. Hello should show `hello <cognito user id>` and write a login row in RDS
+5. Logins should list every stored `user_id` + `login_time`
+
+Refreshing `/login` or `/hello` is served as `index.html` (CloudFront custom error response, and the S3 website `error_document`). Re-run `./frontend/deploy.sh` after UI code changes.
+
+The S3 website URL (`frontend_url`) still works over HTTP if you need it. There is no custom domain or ACM certificate yet.
+
 ## Endpoints (through API Gateway)
 
 | Method | Path | Auth | Behavior |
@@ -160,4 +189,4 @@ cd terraform
 terraform destroy
 ```
 
-NAT Gateway, ALB, RDS, and the EC2 instance incur charges while the stack is up.
+NAT Gateway, ALB, RDS, the EC2 instance, and CloudFront incur charges while the stack is up.
