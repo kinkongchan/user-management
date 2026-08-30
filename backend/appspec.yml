@@ -1,0 +1,23 @@
+version: 0.0
+os: linux
+files:
+  - source: /
+    destination: /opt/user-management
+file_exists_behavior: OVERWRITE
+hooks:
+  ApplicationStop:
+    - location: codedeploy/application_stop.sh
+      timeout: 60
+      runas: root
+  AfterInstall:
+    - location: codedeploy/after_install.sh
+      timeout: 300
+      runas: root
+  ApplicationStart:
+    - location: codedeploy/application_start.sh
+      timeout: 60
+      runas: root
+  ValidateService:
+    - location: codedeploy/validate.sh
+      timeout: 60
+      runas: root
