@@ -40,6 +40,22 @@ data "aws_iam_policy_document" "ec2_app" {
       "${aws_s3_bucket.codedeploy.arn}/*",
     ]
   }
+
+  statement {
+    actions = [
+      "s3:GetObject",
+      "s3:PutObject",
+      "s3:DeleteObject",
+      "s3:AbortMultipartUpload",
+      "s3:ListMultipartUploadParts",
+      "s3:ListBucketMultipartUploads",
+      "s3:ListBucket",
+    ]
+    resources = [
+      aws_s3_bucket.media.arn,
+      "${aws_s3_bucket.media.arn}/*",
+    ]
+  }
 }
 
 resource "aws_iam_role_policy" "ec2_app" {

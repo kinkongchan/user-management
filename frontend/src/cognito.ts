@@ -55,6 +55,34 @@ export function confirmSignUp(email: string, code: string): Promise<void> {
   });
 }
 
+export function forgotPassword(email: string): Promise<void> {
+  return new Promise((resolve, reject) => {
+    getUser(email).forgotPassword({
+      onSuccess: () => resolve(),
+      onFailure: (err) => {
+        if (err?.name === "UserNotFoundException") {
+          resolve();
+          return;
+        }
+        reject(err);
+      },
+    });
+  });
+}
+
+export function confirmResetPassword(
+  email: string,
+  code: string,
+  newPassword: string,
+): Promise<void> {
+  return new Promise((resolve, reject) => {
+    getUser(email).confirmPassword(code, newPassword, {
+      onSuccess: () => resolve(),
+      onFailure: (err) => reject(err),
+    });
+  });
+}
+
 export function signIn(email: string, password: string): Promise<CognitoUserSession> {
   const details = new AuthenticationDetails({
     Username: email,

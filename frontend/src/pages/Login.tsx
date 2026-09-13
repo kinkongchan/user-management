@@ -17,7 +17,7 @@ export function Login() {
     setPending(true);
     try {
       await login(email, password);
-      navigate("/hello");
+      navigate("/media");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Login failed");
     } finally {
@@ -59,6 +59,16 @@ export function Login() {
         Need an account? <Link to="/signup">Sign up</Link>
         {" · "}
         <Link to="/confirm">Confirm email</Link>
+        {" · "}
+        <Link
+          to={
+            email
+              ? `/reset-password?email=${encodeURIComponent(email)}`
+              : "/reset-password"
+          }
+        >
+          Forgot password?
+        </Link>
       </p>
     </main>
   );

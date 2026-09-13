@@ -17,3 +17,9 @@ DATABASE_URL="$(aws secretsmanager get-secret-value \
 
 grep -q '^DATABASE_URL=' /etc/fastapi.env && sed -i '/^DATABASE_URL=/d' /etc/fastapi.env
 printf 'DATABASE_URL=%s\n' "$DATABASE_URL" >> /etc/fastapi.env
+
+ACCOUNT_ID="$(aws sts get-caller-identity --query Account --output text --region "$REGION")"
+grep -q '^MEDIA_BUCKET=' /etc/fastapi.env && sed -i '/^MEDIA_BUCKET=/d' /etc/fastapi.env
+printf 'MEDIA_BUCKET=user-management-media-%s\n' "$ACCOUNT_ID" >> /etc/fastapi.env
+grep -q '^AWS_REGION=' /etc/fastapi.env && sed -i '/^AWS_REGION=/d' /etc/fastapi.env
+printf 'AWS_REGION=%s\n' "$REGION" >> /etc/fastapi.env

@@ -12,6 +12,7 @@ flowchart LR
   subgraph aws [AWS]
     CF[CloudFront]
     S3Web[S3 frontend]
+    S3Media[S3 media]
     Cognito[Cognito user pool]
     APIGW[API Gateway]
     CodeDeploy[CodeDeploy]
@@ -27,9 +28,12 @@ flowchart LR
   CF --> S3Web
   Browser -->|"signup / login"| Cognito
   Browser -->|Bearer ID token| APIGW
+  Browser -->|presigned PUT parts| S3Media
+  Browser -->|presigned GET play| S3Media
   APIGW -->|"JWT authorizer, X-Cognito-Sub"| ALB
   ALB --> EC2
   EC2 --> RDS
+  EC2 -->|multipart start/complete| S3Media
   DeployFrontend -->|upload static files| S3Web
   DeployBackend -->|upload revision| S3
   S3 --> CodeDeploy
@@ -73,15 +77,43 @@ sequenceDiagram
   FastAPI-->>React: hello user_id
 ```
 
+## Open uploaded file
+
+The Media table filename is a link. Multipart uploads become **one** S3 object after complete, so the link plays or shows that single file. The click goes to S3, not back through API Gateway.
+
+```mermaid
+sequenceDiagram
+  participant User
+  participant React
+  participant APIGW as API_Gateway
+  participant FastAPI
+  participant RDS
+  participant S3 as S3_media
+
+  User->>React: open Media
+  React->>APIGW: GET /media with Bearer token
+  APIGW->>APIGW: verify JWT
+  APIGW->>FastAPI: GET /media plus X-Cognito-Sub
+  FastAPI->>RDS: completed rows for this user_id
+  FastAPI->>FastAPI: presigned GET for each s3_key
+  FastAPI-->>React: timestamp, file_name, file_size, url
+  React-->>User: table with filename links
+
+  User->>React: click Uploaded file
+  React->>S3: GET presigned url
+  S3-->>User: one assembled object inline
+```
+
 ## Prerequisites
 
 - AWS CLI (`aws configure` — you do this yourself)
 - Terraform >= 1.5
 - Node.js 20+ (to build or run the React UI)
+- Python 3.9 for FastAPI (Amazon Linux 2023 system `python3` on EC2; `backend/requirements.txt` does not pin the interpreter). Keep backend code 3.9-compatible (`Union` / `Optional`, no `str | int`, no backslashes inside f-strings, no `match`/`case`).
 
 ## 1. Provision infrastructure
 
-`terraform apply` creates Cognito, API Gateway, the ALB, one EC2 instance, RDS, a CodeDeploy application, a revision bucket, a public S3 website bucket, and a CloudFront distribution for the React app. It does **not** start FastAPI or upload frontend files. CloudFront uses the default `*.cloudfront.net` certificate (no ACM). The first CloudFront deploy can take several minutes.
+`terraform apply` creates Cognito, API Gateway, the ALB, one EC2 instance, RDS, a CodeDeploy application, a revision bucket, a public S3 website bucket, a private media bucket, and a CloudFront distribution for the React app. It does **not** start FastAPI or upload frontend files. CloudFront uses the default `*.cloudfront.net` certificate (no ACM). The first CloudFront deploy can take several minutes. App env vars such as `MEDIA_BUCKET` and `DATABASE_URL` are written by `backend/codedeploy/after_install.sh` on each `./backend/deploy.sh`, not by EC2 user data.
 
 From `user-management/`:
 
@@ -104,6 +136,7 @@ terraform output
 | `frontend_url` | Public S3 website URL (HTTP) |
 | `frontend_cloudfront_url` | HTTPS CloudFront URL (open this in a browser) |
 | `frontend_cloudfront_distribution_id` | Used by `frontend/deploy.sh` to invalidate cache |
+| `media_bucket` | Private S3 bucket for image/video multipart uploads |
 | `aws_region` | Same region you applied in |
 
 Wait a few minutes after apply so the instance installs the CodeDeploy agent.
@@ -116,7 +149,7 @@ From `user-management/`:
 ./backend/deploy.sh
 ```
 
-That zips `backend/` (including `appspec.yml`), uploads a revision, and starts a CodeDeploy in-place deployment. The agent on EC2 copies the files, installs dependencies, and starts uvicorn.
+That zips `backend/` (including `appspec.yml`), uploads a revision, and starts a CodeDeploy in-place deployment. The agent on EC2 copies the files, creates a venv with system Python 3.9, installs dependencies, and starts uvicorn.
 
 Re-run the same script after API code changes. Do not run `terraform apply` just to ship app code.
 
@@ -146,9 +179,11 @@ Open http://localhost:5173 and:
 
 1. Sign up with email + password
 2. Confirm the code Cognito emails you
-3. Log in
-4. Hello should show `hello <cognito user id>` and write a login row in RDS
-5. Logins should list every stored `user_id` + `login_time`
+3. Log in — you land on Media
+4. Upload an image or video; the table should show timestamp, file name, and size
+5. Hello should show `hello <cognito user id>` and write a login row in RDS
+6. Logins should list every stored `user_id` + `login_time`
+7. From Log in, use Forgot password, enter the emailed code and a new password, then log in with the new password
 
 ## 4. Deploy the UI to S3
 
@@ -164,21 +199,31 @@ Open the printed `frontend_cloudfront_url` (HTTPS, for example `https://d111111a
 
 1. Sign up with email + password
 2. Confirm the code Cognito emails you
-3. Log in
-4. Hello should show `hello <cognito user id>` and write a login row in RDS
-5. Logins should list every stored `user_id` + `login_time`
+3. Log in — you land on Media
+4. Upload an image or video; the table should show timestamp, file name, and size
+5. Hello should show `hello <cognito user id>` and write a login row in RDS
+6. Logins should list every stored `user_id` + `login_time`
+7. From Log in, use Forgot password, enter the emailed code and a new password, then log in with the new password
 
-Refreshing `/login` or `/hello` is served as `index.html` (CloudFront custom error response, and the S3 website `error_document`). Re-run `./frontend/deploy.sh` after UI code changes.
+Refreshing `/login`, `/hello`, `/media`, or `/reset-password` is served as `index.html` (CloudFront custom error response, and the S3 website `error_document`). Re-run `./frontend/deploy.sh` after UI code changes.
+
+After adding the media bucket, run `terraform apply` (creates the bucket, IAM, and POST route; it does not replace EC2), then `./backend/deploy.sh`, then `./frontend/deploy.sh`.
 
 The S3 website URL (`frontend_url`) still works over HTTP if you need it. There is no custom domain or ACM certificate yet.
 
-## Endpoints (through API Gateway)
+## Endpoints
+
+`/health` is ALB only. The rest go through API Gateway.
 
 | Method | Path | Auth | Behavior |
 |---|---|---|---|
 | GET | `/health` | No (ALB only) | Load balancer health check |
 | GET | `/hello` | Yes | Insert login row, return `hello <user_id>` |
 | GET | `/logins` | Yes | All login rows, newest first |
+| POST | `/media/uploads` | Yes | Start S3 multipart upload, return 500 MB part presigned URLs |
+| POST | `/media/uploads/{id}/complete` | Yes | Complete multipart upload |
+| GET | `/media` | Yes | Current user's completed uploads (timestamp, file name, size, play URL) |
+| DELETE | `/media/{id}` | Yes | Delete the S3 object and the row |
 
 API Gateway verifies the Cognito JWT and forwards the user id as `X-Cognito-Sub`.
 

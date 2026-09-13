@@ -15,6 +15,8 @@ class Settings(BaseSettings):
     cognito_client_id: str = ""
     cognito_region: str = "us-west-2"
     cors_origins: str = "http://localhost:5173"
+    media_bucket: str = ""
+    aws_region: str = "us-west-2"
 
     @property
     def cors_origin_list(self) -> list[str]:

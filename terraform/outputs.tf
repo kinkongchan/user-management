@@ -63,6 +63,11 @@ output "frontend_cloudfront_distribution_id" {
   value       = aws_cloudfront_distribution.frontend.id
 }
 
+output "media_bucket" {
+  description = "Private S3 bucket for image and video uploads"
+  value       = aws_s3_bucket.media.bucket
+}
+
 output "rds_endpoint" {
   description = "RDS Postgres hostname"
   value       = aws_db_instance.this.address

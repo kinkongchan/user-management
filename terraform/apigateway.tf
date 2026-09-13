@@ -4,7 +4,7 @@ resource "aws_apigatewayv2_api" "this" {
 
   cors_configuration {
     allow_origins     = local.frontend_cors_origins
-    allow_methods     = ["GET", "POST", "OPTIONS"]
+    allow_methods     = ["GET", "POST", "DELETE", "OPTIONS"]
     allow_headers     = ["Authorization", "Content-Type"]
     allow_credentials = true
     max_age           = 3600
@@ -52,6 +52,22 @@ resource "aws_apigatewayv2_integration" "alb_root" {
 resource "aws_apigatewayv2_route" "proxy" {
   api_id             = aws_apigatewayv2_api.this.id
   route_key          = "GET /{proxy+}"
+  authorization_type = "JWT"
+  authorizer_id      = aws_apigatewayv2_authorizer.cognito.id
+  target             = "integrations/${aws_apigatewayv2_integration.alb.id}"
+}
+
+resource "aws_apigatewayv2_route" "post_proxy" {
+  api_id             = aws_apigatewayv2_api.this.id
+  route_key          = "POST /{proxy+}"
+  authorization_type = "JWT"
+  authorizer_id      = aws_apigatewayv2_authorizer.cognito.id
+  target             = "integrations/${aws_apigatewayv2_integration.alb.id}"
+}
+
+resource "aws_apigatewayv2_route" "delete_proxy" {
+  api_id             = aws_apigatewayv2_api.this.id
+  route_key          = "DELETE /{proxy+}"
   authorization_type = "JWT"
   authorizer_id      = aws_apigatewayv2_authorizer.cognito.id
   target             = "integrations/${aws_apigatewayv2_integration.alb.id}"

@@ -6,6 +6,8 @@ import { Confirm } from "./pages/Confirm";
 import { Hello } from "./pages/Hello";
 import { Login } from "./pages/Login";
 import { Logins } from "./pages/Logins";
+import { Media } from "./pages/Media";
+import { ResetPassword } from "./pages/ResetPassword";
 import { Signup } from "./pages/Signup";
 
 function RequireAuth({ children }: { children: ReactElement }) {
@@ -29,6 +31,7 @@ export function App() {
         <nav>
           {userId ? (
             <>
+              <NavLink to="/media">Media</NavLink>
               <NavLink to="/hello">Hello</NavLink>
               <NavLink to="/logins">Logins</NavLink>
               <button type="button" className="linkish" onClick={logout}>
@@ -45,10 +48,19 @@ export function App() {
       </header>
       {ready ? (
         <Routes>
-          <Route path="/" element={<Navigate to={userId ? "/hello" : "/login"} replace />} />
+          <Route path="/" element={<Navigate to={userId ? "/media" : "/login"} replace />} />
           <Route path="/signup" element={<Signup />} />
           <Route path="/confirm" element={<Confirm />} />
           <Route path="/login" element={<Login />} />
+          <Route path="/reset-password" element={<ResetPassword />} />
+          <Route
+            path="/media"
+            element={
+              <RequireAuth>
+                <Media />
+              </RequireAuth>
+            }
+          />
           <Route
             path="/hello"
             element={

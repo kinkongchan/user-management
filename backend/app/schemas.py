@@ -21,3 +21,41 @@ class LoginListResponse(BaseModel):
 
 class HealthResponse(BaseModel):
     status: str
+
+
+class MediaUploadRequest(BaseModel):
+    file_name: str
+    content_type: str
+    file_size: int
+
+
+class MediaPartUrl(BaseModel):
+    part_number: int
+    url: str
+
+
+class MediaUploadResponse(BaseModel):
+    id: int
+    upload_id: str
+    parts: list[MediaPartUrl]
+
+
+class MediaCompletePart(BaseModel):
+    part_number: int
+    etag: str
+
+
+class MediaCompleteRequest(BaseModel):
+    parts: list[MediaCompletePart]
+
+
+class MediaRecord(BaseModel):
+    id: int
+    timestamp: datetime
+    file_name: str
+    file_size: int
+    url: str
+
+
+class MediaListResponse(BaseModel):
+    media: list[MediaRecord]
