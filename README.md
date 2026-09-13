@@ -77,6 +77,40 @@ sequenceDiagram
   FastAPI-->>React: hello user_id
 ```
 
+## Upload media
+
+Parts of 500 MB go to S3 in parallel. After complete, S3 stores **one** object.
+
+```mermaid
+sequenceDiagram
+  participant User
+  participant React
+  participant APIGW as API_Gateway
+  participant FastAPI
+  participant RDS
+  participant S3 as S3_media
+
+  User->>React: choose file and Upload
+  React->>APIGW: POST /media/uploads with Bearer token
+  APIGW->>APIGW: verify JWT
+  APIGW->>FastAPI: POST plus X-Cognito-Sub
+  FastAPI->>S3: create multipart upload
+  FastAPI->>S3: presigned PUT per 500 MB part
+  FastAPI->>RDS: insert pending media row
+  FastAPI-->>React: id, upload_id, part urls
+  par each part
+    React->>S3: PUT part bytes
+    S3-->>React: ETag
+  end
+  React->>APIGW: POST /media/uploads/id/complete
+  APIGW->>FastAPI: POST plus X-Cognito-Sub
+  FastAPI->>S3: complete multipart
+  FastAPI->>RDS: status complete
+  FastAPI-->>React: complete
+  React->>APIGW: GET /media
+  FastAPI-->>React: rows with play urls
+```
+
 ## Open uploaded file
 
 The Media table filename is a link. Multipart uploads become **one** S3 object after complete, so the link plays or shows that single file. The click goes to S3, not back through API Gateway.
@@ -180,10 +214,12 @@ Open http://localhost:5173 and:
 1. Sign up with email + password
 2. Confirm the code Cognito emails you
 3. Log in — you land on Media
-4. Upload an image or video; the table should show timestamp, file name, and size
-5. Hello should show `hello <cognito user id>` and write a login row in RDS
-6. Logins should list every stored `user_id` + `login_time`
-7. From Log in, use Forgot password, enter the emailed code and a new password, then log in with the new password
+4. Upload an image or video; a progress bar should move, then the table should show timestamp, a filename link, size, and Delete
+5. Click the filename; the file should open or play from S3 (one object even if it had multiple parts)
+6. Delete should remove the row
+7. Hello should show `hello <cognito user id>` and write a login row in RDS
+8. Logins should list every stored `user_id` + `login_time`
+9. From Log in, use Forgot password, enter the emailed code and a new password, then log in with the new password
 
 ## 4. Deploy the UI to S3
 
@@ -200,10 +236,12 @@ Open the printed `frontend_cloudfront_url` (HTTPS, for example `https://d111111a
 1. Sign up with email + password
 2. Confirm the code Cognito emails you
 3. Log in — you land on Media
-4. Upload an image or video; the table should show timestamp, file name, and size
-5. Hello should show `hello <cognito user id>` and write a login row in RDS
-6. Logins should list every stored `user_id` + `login_time`
-7. From Log in, use Forgot password, enter the emailed code and a new password, then log in with the new password
+4. Upload an image or video; a progress bar should move, then the table should show timestamp, a filename link, size, and Delete
+5. Click the filename; the file should open or play from S3 (one object even if it had multiple parts)
+6. Delete should remove the row
+7. Hello should show `hello <cognito user id>` and write a login row in RDS
+8. Logins should list every stored `user_id` + `login_time`
+9. From Log in, use Forgot password, enter the emailed code and a new password, then log in with the new password
 
 Refreshing `/login`, `/hello`, `/media`, or `/reset-password` is served as `index.html` (CloudFront custom error response, and the S3 website `error_document`). Re-run `./frontend/deploy.sh` after UI code changes.
 
